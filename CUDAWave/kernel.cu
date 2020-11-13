@@ -41,6 +41,8 @@ int NUM_BLOCKS = (nPoints + NUM_THREADS - 1) / NUM_THREADS;
 int deviceId = -1;
 bool GPUAllocated = false;
 
+S2D_Text* txt = S2D_CreateText("LEMONMILK-Light.otf", "a", 15);
+
 __global__ void timeStep(double* pos, double* vel, double* nPos, int* N, double* dx, double* dt, double* c, double input) {
 	int TID = threadIdx.x + (blockIdx.x * blockDim.x);
 
@@ -117,6 +119,20 @@ void sendToGPU() {
 	cudaMemcpy(d_dx, &dx, sizeof(double), cudaMemcpyHostToDevice);
 	cudaMemcpy(d_dt, &dt, sizeof(double), cudaMemcpyHostToDevice);
 	cudaMemcpy(d_c, &c, sizeof(double), cudaMemcpyHostToDevice);
+}
+
+void swapPointers() {
+	double* d_pos_temp, * pos_temp;
+
+	// swap GPU pointers
+	d_pos_temp = d_pos;
+	d_pos = d_nPos;
+	d_nPos = d_pos_temp;
+
+	// swap CPU pointers
+	pos_temp = pos;
+	pos = nPos;
+	nPos = pos_temp;
 }
 
 void reset() {
@@ -217,14 +233,11 @@ void update() {
 			for (int p = 0; p < nPoints; p++) {
 				timeStepCPU(p, input);
 			}
-			for (int p = 0; p < nPoints; p++) {
-				pos[p] = nPos[p];
-			}
 		}
 		else {
 			timeStep << <NUM_BLOCKS, NUM_THREADS >> > (d_pos, d_vel, d_nPos, d_N, d_dx, d_dt, d_c, input);
-			cudaMemcpy(d_pos, d_nPos, nPoints * sizeof(double), cudaMemcpyDeviceToDevice);
 		}
+		swapPointers();
 		t += dt;
 		iteration++;
 	}
@@ -232,17 +245,16 @@ void update() {
 		cudaMemcpy(pos, d_pos, nPoints * sizeof(double), cudaMemcpyDeviceToHost);
 }
 
-void drawText(std::string text, float x, float y, int size) {
-	S2D_Text* txt = S2D_CreateText("LEMONMILK-Light.otf", text.c_str(), size);
+void drawText(std::string text, float x, float y) {
+	S2D_SetText(txt, text.c_str());
 	txt->x = x;
 	txt->y = y;
 	S2D_DrawText(txt);
-	S2D_FreeText(txt);
 }
 
 int currentLine = 0;
 void printLine(std::string text) {
-	drawText(text, 5, 5 + 15 * currentLine, 15);
+	drawText(text, 5, 5 + 15 * currentLine);
 	currentLine++;
 }
 
